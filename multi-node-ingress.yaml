@@ -1,0 +1,174 @@
+# Multi-node Ingress Configuration with Load Balancing
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multi-node-ingress
+  annotations:
+    # Load balancing and sticky sessions
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "app-server"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-path: "/"
+    
+    # Load balancing algorithm
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+    nginx.ingress.kubernetes.io/load-balance: "round_robin"
+    
+    # Connection and timeout settings
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    
+    # CORS for cross-node communication
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    
+    # SSL and security
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    
+    # Rate limiting per IP
+    nginx.ingress.kubernetes.io/rate-limit-rpm: "300"
+    
+spec:
+  ingressClassName: nginx
+  rules:
+  # Host-based routing for different servers
+  - host: web1.production.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web1-service
+            port:
+              number: 3000
+  
+  - host: web2.production.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web2-service
+            port:
+              number: 31000
+  
+  - host: api1.production.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api1-service
+            port:
+              number: 5000
+  
+  - host: api2.production.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api2-service
+            port:
+              number: 5100
+
+---
+# Alternative: Path-based routing for single domain
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: path-based-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/load-balance: "round_robin"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr consistent"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "route"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: app.production.local
+    http:
+      paths:
+      # Web1 as default
+      - path: /()(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: web1-service
+            port:
+              number: 3000
+      
+      # Web2 on /web2
+      - path: /web2(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: web2-service
+            port:
+              number: 31000
+      
+      # API1 on /api1
+      - path: /api1(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: api1-service
+            port:
+              number: 5000
+      
+      # API2 on /api2  
+      - path: /api2(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: api2-service
+            port:
+              number: 5100
+
+---
+# Service Monitor for Prometheus (Optional)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app-service-monitor
+  labels:
+    app: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: api1
+  endpoints:
+  - port: http
+    path: /api/status
+    interval: 30s
+  - port: http
+    path: /metrics
+    interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api2-service-monitor
+  labels:
+    app: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: api2
+  endpoints:
+  - port: http
+    path: /api/status
+    interval: 30s

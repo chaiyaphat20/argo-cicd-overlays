@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web1-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web1
+      version: v1
+  template:
+    spec:
+      containers:
+      - name: web1
+        image: web1:latest
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        env:
+        - name: NODE_ENV
+          value: "development"
+        - name: NEXT_PUBLIC_API1_URL
+          value: "http://api1-service:5000"
+        - name: DEBUG
+          value: "true"

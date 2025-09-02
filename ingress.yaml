@@ -1,0 +1,114 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+spec:
+  ingressClassName: nginx
+  rules:
+  # Web1 Application - Port 3000 (Default web interface)
+  - host: web1.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web1-service
+            port:
+              number: 3000
+  
+  # Web2 Application - Port 31000
+  - host: web2.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web2-service
+            port:
+              number: 31000
+  
+  # API1 Service - Port 5000
+  - host: api1.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api1-service
+            port:
+              number: 5000
+  
+  # API2 Service - Port 5100
+  - host: api2.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api2-service
+            port:
+              number: 5100
+
+---
+# Alternative Ingress using paths instead of hosts
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress-paths
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      # Web1 on default port 3000 - Main path
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web1-service
+            port:
+              number: 3000
+      
+      # Web2 on port 31000 - /web2 path
+      - path: /web2
+        pathType: Prefix
+        backend:
+          service:
+            name: web2-service
+            port:
+              number: 31000
+      
+      # API1 on port 5000 - /api1 path
+      - path: /api1
+        pathType: Prefix
+        backend:
+          service:
+            name: api1-service
+            port:
+              number: 5000
+      
+      # API2 on port 5100 - /api2 path
+      - path: /api2
+        pathType: Prefix
+        backend:
+          service:
+            name: api2-service
+            port:
+              number: 5100

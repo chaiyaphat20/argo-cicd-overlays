@@ -1,0 +1,418 @@
+# Production deployment with multi-server support
+# kubectl apply -f deploy-production.yaml
+
+# API1 Deployment with Node Affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api1-deployment
+  labels:
+    app: api1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api1
+  template:
+    metadata:
+      labels:
+        app: api1
+    spec:
+      # Anti-affinity เพื่อกระจาย pods ไปคนละ node
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api1
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: api1
+        image: api1:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "5000"
+        # Service discovery config
+        - name: CLUSTER_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      restartPolicy: Always
+
+---
+# API1 Service with Session Affinity
+apiVersion: v1
+kind: Service
+metadata:
+  name: api1-service
+  labels:
+    app: api1
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP  # Optional: for sticky sessions
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 86400
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: http
+  selector:
+    app: api1
+
+---
+# API2 Deployment with Node Affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api2-deployment
+  labels:
+    app: api2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api2
+  template:
+    metadata:
+      labels:
+        app: api2
+    spec:
+      # Anti-affinity เพื่อกระจาย pods ไปคนละ node
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api2
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: api2
+        image: api2:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5100
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "5100"
+        - name: CLUSTER_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: 5100
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5100
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      restartPolicy: Always
+
+---
+# API2 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api2-service
+  labels:
+    app: api2
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 86400
+  ports:
+  - port: 5100
+    targetPort: 5100
+    protocol: TCP
+    name: http
+  selector:
+    app: api2
+
+---
+# Web1 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web1-deployment
+  labels:
+    app: web1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web1
+  template:
+    metadata:
+      labels:
+        app: web1
+    spec:
+      # Anti-affinity เพื่อกระจาย pods
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - web1
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: web1
+        image: web1:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        # ใช้ Service Name สำหรับการเชื่อมต่อ cross-node
+        - name: NEXT_PUBLIC_API1_URL
+          value: "http://api1-service.default.svc.cluster.local:5000"
+        - name: CLUSTER_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      restartPolicy: Always
+
+---
+# Web1 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: web1-service
+  labels:
+    app: web1
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: web1
+
+---
+# Web2 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web2-deployment
+  labels:
+    app: web2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web2
+  template:
+    metadata:
+      labels:
+        app: web2
+    spec:
+      # Anti-affinity เพื่อกระจาย pods
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - web2
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: web2
+        image: web2:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 31000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "31000"
+        # ใช้ FQDN สำหรับการเชื่อมต่อ cross-node
+        - name: NEXT_PUBLIC_API2_URL
+          value: "http://api2-service.default.svc.cluster.local:5100"
+        - name: CLUSTER_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 31000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 31000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      restartPolicy: Always
+
+---
+# Web2 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: web2-service
+  labels:
+    app: web2
+spec:
+  type: ClusterIP
+  ports:
+  - port: 31000
+    targetPort: 31000
+    protocol: TCP
+    name: http
+  selector:
+    app: web2
+
+---
+# Network Policy for Security (Optional)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web1
+    - podSelector:
+        matchLabels:
+          app: web2
+    ports:
+    - protocol: TCP
+      port: 5000
+    - protocol: TCP
+      port: 5100
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: api1
+    - podSelector:
+        matchLabels:
+          app: api2
+    ports:
+    - protocol: TCP
+      port: 5000
+    - protocol: TCP
+      port: 5100
+  - to: []  # Allow all outbound DNS/external traffic
+    ports:
+    - protocol: UDP
+      port: 53

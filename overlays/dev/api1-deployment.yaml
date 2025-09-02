@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api1-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api1
+      version: v1
+  template:
+    spec:
+      containers:
+      - name: api1
+        image: api1:latest
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        env:
+        - name: NODE_ENV
+          value: "development"
+        - name: DEBUG
+          value: "true"

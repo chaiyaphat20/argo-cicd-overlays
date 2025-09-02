@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: default
+
+# Base resources
+resources:
+- ../../manifests
+
+# Common labels
+labels:
+- pairs:
+    environment: dev
+    team: web-api
+
+# Images
+images:
+- name: api1
+  newTag: latest
+- name: web1
+  newTag: latest
+
+# Patches for development environment
+patches:
+- path: api1-deployment.yaml
+  target:
+    kind: Deployment
+    name: api1-deployment
+- path: web1-deployment.yaml
+  target:
+    kind: Deployment
+    name: web1-deployment
+
+# ConfigMap generator
+configMapGenerator:
+- name: app-config
+  literals:
+  - environment=development
+  - debug=true
+  - api_url=http://api1-service:5000
+
+# Resource limits for dev
+replicas:
+- name: api1-deployment
+  count: 1
+- name: web1-deployment
+  count: 1
